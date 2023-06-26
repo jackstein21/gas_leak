@@ -6,6 +6,8 @@ import random
 import numpy as np
 import cv2 as cv
 import albumentations as A
+from pascal_voc_writer import Writer
+
 def get_backgrounds(path):
     backgrounds = sorted(os.listdir(path))
     backgrounds = [os.path.join(path, f) for f in backgrounds]
@@ -82,7 +84,7 @@ def draw_square(img,bbox):
   image = cv.rectangle(img, start_point, end_point,(255,0,0))
   return image
 
-def find_bounding_box_center(image):
+def find_bounding_box(image):
     """
     Finds the bounding box around the mask.
     Args:
@@ -121,20 +123,29 @@ def find_bounding_box_center(image):
                 bottom = i
 
     # Find the center of the bounding box.
-    center_x = (left + right) // 2
-    center_y = (top + bottom) // 2
+    # center_x = (left + right) // 2
+    # center_y = (top + bottom) // 2
 
     return (left,right,top,bottom)
 
 
-def generate_annotation(image_frame, image_mask):
+def generate_annotation(image_frame, image_path, image_mask):
   # create bounding box
-  bbox = find_bounding_box_center(image_mask)
+  bbox = find_bounding_box(image_mask)
   # draw box
   annotated_image = draw_square(image_frame,bbox)
 
-  # return
+  # write xml
+  writer = Writer(image_path, annotated_image.shape[0], annotated_image.shape[1])
+  writer.addObject('source', bbox[0], bbox[2], bbox[1], bbox[3])
+  writer.save(image_path[:-4]+'.xml')
+  
+  # return image
   return annotated_image
+
+
+
+  
   # image = cv2.imread(cv2.samples.findFile(img_path1))
   # image_mask = cv2.imread(cv2.samples.findFile(img_path2))
   # writer = Writer(img_path1, image.shape[0], image.shape[1])
@@ -212,9 +223,11 @@ def pipeline(backgrounds, smokes, i, output_frames, output_masks, output_annotat
     cv.imwrite(path_mask, mask) # Save mask file
 
     #generate annoataion
-    annotated_img = generate_annotation(frame,mask)
+    annotated_img = generate_annotation(frame, path_frame,mask)
     path_annotation = os.path.join(output_annotated, 'annotated_{0:0>{zeros}}.jpg'.format(i, zeros=max(zero_trail, 3)))
-    cv.imwrite(path_annotation, annotated_img) # Save mask file# Save annotated image
+    cv.imwrite(path_annotation, annotated_img) # Save annotated image
+    
+
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
