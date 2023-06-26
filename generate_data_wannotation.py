@@ -138,23 +138,12 @@ def generate_annotation(image_frame, image_path, image_mask):
   # write xml
   writer = Writer(image_path, annotated_image.shape[0], annotated_image.shape[1])
   writer.addObject('source', bbox[0], bbox[2], bbox[1], bbox[3])
-  writer.save(image_path[:-4]+'.xml')
+
+  # save xml to same folder as the frame
+  writer.save(image_path[:-4]+'.xml') 
   
   # return image
   return annotated_image
-
-
-
-  
-  # image = cv2.imread(cv2.samples.findFile(img_path1))
-  # image_mask = cv2.imread(cv2.samples.findFile(img_path2))
-  # writer = Writer(img_path1, image.shape[0], image.shape[1])
-
-  # writer.addObject('source', bbox[0], bbox[2], bbox[1], bbox[3])
-
-
-  # write to file. saves in same directory but as .xml
-  # writer.save(img_path1[:-4]+'.xml')
 
 def make_dirs(output_dir):
     output_frames = os.path.join(output_dir, 'frames')
