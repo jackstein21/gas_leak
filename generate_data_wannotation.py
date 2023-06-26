@@ -6,7 +6,6 @@ import random
 import numpy as np
 import cv2 as cv
 import albumentations as A
-
 def get_backgrounds(path):
     backgrounds = sorted(os.listdir(path))
     backgrounds = [os.path.join(path, f) for f in backgrounds]
@@ -77,6 +76,75 @@ def generate_mask(background, smoke, size, H, W, x, y, beta, threshold=50):
     #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
     return mask
 
+def draw_square(img,bbox):
+  start_point = bbox[0],bbox[2]
+  end_point = bbox[1],bbox[3]
+  image = cv.rectangle(img, start_point, end_point,(255,0,0))
+  return image
+
+def find_bounding_box_center(image):
+    """
+    Finds the bounding box around the mask.
+    Args:
+        image: The image that contains the mask.
+    Returns:
+        The bounding box around the mask.
+    """
+    # Find the left and right most white pixels.
+    left = image.shape[1]
+    right = 0
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            if (image[i][j] >= 245).any():
+                pixel_is_white = True
+            else:
+                pixel_is_white = False
+
+            if pixel_is_white and j < left:
+                left = j
+            elif pixel_is_white and j > right:
+                right = j
+
+    # Find the top and bottom most white pixels.
+    top = image.shape[0]
+    bottom = 0
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            if (image[i][j] >= 245).any():
+                pixel_is_white = True
+            else:
+                pixel_is_white = False
+
+            if pixel_is_white and i < top:
+                top = i
+            elif pixel_is_white and i > bottom:
+                bottom = i
+
+    # Find the center of the bounding box.
+    center_x = (left + right) // 2
+    center_y = (top + bottom) // 2
+
+    return (left,right,top,bottom)
+
+
+def generate_annotation(image_frame, image_mask):
+  # create bounding box
+  bbox = find_bounding_box_center(image_mask)
+  # draw box
+  annotated_image = draw_square(image_frame,bbox)
+
+  # return
+  return annotated_image
+  # image = cv2.imread(cv2.samples.findFile(img_path1))
+  # image_mask = cv2.imread(cv2.samples.findFile(img_path2))
+  # writer = Writer(img_path1, image.shape[0], image.shape[1])
+
+  # writer.addObject('source', bbox[0], bbox[2], bbox[1], bbox[3])
+
+
+  # write to file. saves in same directory but as .xml
+  # writer.save(img_path1[:-4]+'.xml')
+
 def make_dirs(output_dir):
     output_frames = os.path.join(output_dir, 'frames')
     try:
@@ -88,10 +156,16 @@ def make_dirs(output_dir):
         os.makedirs(output_masks)
     except:
         pass
-    return output_frames, output_masks
+    output_annotated = os.path.join(output_dir, 'annotated')
+    try:
+        os.makedirs(output_annotated)
+    except:
+        pass
+    
+    return output_frames, output_masks, output_annotated
 
 def get_evaluation_data(
-    output_frames, output_masks, output_frames_eval, output_masks_eval):
+    output_frames, output_masks, output_frames_eval, output_masks_eval, output_annotated_eval):
     frames = [f for f in sorted(os.listdir(output_frames)) if 'frame' in f]
     backgrounds = [f for f in sorted(os.listdir(output_frames)) if 'background' in f]
     masks = sorted(os.listdir(output_masks))
@@ -113,7 +187,7 @@ def get_evaluation_data(
         dst_mask = os.path.join(output_masks_eval, mask)
         os.replace(src_mask, dst_mask)
 
-def pipeline(backgrounds, smokes, i, output_frames, output_masks, zero_trail):
+def pipeline(backgrounds, smokes, i, output_frames, output_masks, output_annotated, zero_trail):
     background = sample_background(backgrounds)
     background = cv.cvtColor(background, cv.COLOR_BGR2GRAY)
     background = cv.cvtColor(background, cv.COLOR_GRAY2BGR)
@@ -135,7 +209,12 @@ def pipeline(backgrounds, smokes, i, output_frames, output_masks, zero_trail):
         background, smoke, size, H, W, x, y, beta, threshold=50)
 
     path_mask = os.path.join(output_masks, 'mask_{0:0>{zeros}}.jpg'.format(i, zeros=max(zero_trail, 3)))
-    cv.imwrite(path_mask, mask)
+    cv.imwrite(path_mask, mask) # Save mask file
+
+    #generate annoataion
+    annotated_img = generate_annotation(frame,mask)
+    path_annotation = os.path.join(output_annotated, 'annotated_{0:0>{zeros}}.jpg'.format(i, zeros=max(zero_trail, 3)))
+    cv.imwrite(path_annotation, annotated_img) # Save mask file# Save annotated image
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
@@ -152,13 +231,13 @@ if __name__ == '__main__':
     args = vars(ap.parse_args())  # By default, it takes arguments from sys.argv
 
     # Gathers all the data
-    output_frames, output_masks = make_dirs(args['output'])
+    output_frames, output_masks, output_annotated = make_dirs(args['output'])
     backgrounds = get_backgrounds(args['backgrounds'])
     smokes = get_smokes(args['smokes'])
 
     # Determines how many images to create
     if args['eval'] != None:
-        output_frames_eval, output_masks_eval = make_dirs(args['eval'])
+        output_frames_eval, output_masks_eval, output_annotated_eval = make_dirs(args['eval'])
         n_iterations = int(int(args['number']) * 3/2)
     else:
         n_iterations = int(args['number'])
@@ -168,9 +247,9 @@ if __name__ == '__main__':
     # Pipeline runs for every image
     print('Generating {} frames/masks...'.format(n_iterations))
     for i in range(n_iterations):
-        pipeline(backgrounds, smokes, i, output_frames, output_masks, zero_trail=len(str(n_iterations)))
+        pipeline(backgrounds, smokes, i, output_frames, output_masks, output_annotated, zero_trail=len(str(n_iterations)))
 
     if args['eval'] != None:
         get_evaluation_data(
             output_frames, output_masks,
-            output_frames_eval, output_masks_eval)
+            output_frames_eval, output_masks_eval, output_annotated_eval)
